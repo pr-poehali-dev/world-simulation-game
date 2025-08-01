@@ -18,6 +18,8 @@ interface Country {
   cities: { x: number; y: number }[];
   weapons: WeaponType[];
   diplomacy: { allies: string[]; enemies: string[] };
+  aiPersonality: 'peaceful' | 'aggressive' | 'expansionist' | 'defensive' | 'neutral';
+  weaponLevel: number;
 }
 
 interface Territory {
@@ -59,6 +61,7 @@ const WEAPON_EVOLUTION = {
 };
 
 const SPEED_MODES = [
+  { name: 'Пауза', description: 'Пауза', multiplier: 0 },
   { name: '1x', description: '1 день/сек', multiplier: 1 },
   { name: '10x', description: '10 дней/сек', multiplier: 10 },
   { name: '365x', description: '1 год/сек', multiplier: 365 },
@@ -88,16 +91,17 @@ const Index = () => {
   useEffect(() =&gt; {
     const initTerritories = () =&gt; {
       const newTerritories: Territory[] = [];
-      // Создаем сетку территорий (упрощенная карта мира)
-      const rows = 20;
-      const cols = 40;
-      const territoryWidth = 800 / cols;
-      const territoryHeight = 400 / rows;
+      // Создаем более плотную сетку территорий для лучшего геймплея
+      const rows = 30;
+      const cols = 60;
+      const territoryWidth = 1200 / cols;
+      const territoryHeight = 600 / rows;
 
       for (let i = 0; i &lt; rows; i++) {
         for (let j = 0; j &lt; cols; j++) {
-          // Пропускаем некоторые территории для создания "океанов"
-          if (Math.random() &gt; 0.25) {
+          // Создаем континенты - меньше океанов, больше суши
+          const isLand = Math.random() &gt; 0.2; // 80% суши
+          if (isLand) {
             newTerritories.push({
               id: `territory-${i}-${j}`,
               x: j * territoryWidth,
@@ -131,9 +135,12 @@ const Index = () => {
     );
 
     if (clickedTerritory) {
+      const personalities: Country['aiPersonality'][] = ['peaceful', 'aggressive', 'expansionist', 'defensive', 'neutral'];
+      const countryNames = ['Атлантида', 'Лемурия', 'Элдорадо', 'Шангри-Ла', 'Валгалла', 'Асгард', 'Олимп', 'Авалон', 'Утопия', 'Эдем'];
+      
       const newCountry: Country = {
         id: `country-${Date.now()}`,
-        name: `Страна ${countries.length + 1}`,
+        name: countryNames[countries.length % countryNames.length] || `Страна ${countries.length + 1}`,
         color: COUNTRY_COLORS[countries.length % COUNTRY_COLORS.length],
         population: Math.floor(Math.random() * 1000000) + 100000,
         economy: Math.floor(Math.random() * 50000) + 10000,
@@ -147,7 +154,9 @@ const Index = () => {
           { name: 'Копье', era: 'Ancient', count: Math.floor(Math.random() * 1000) + 100 },
           { name: 'Меч', era: 'Ancient', count: Math.floor(Math.random() * 500) + 50 }
         ],
-        diplomacy: { allies: [], enemies: [] }
+        diplomacy: { allies: [], enemies: [] },
+        aiPersonality: personalities[Math.floor(Math.random() * personalities.length)],
+        weaponLevel: 0
       };
 
       // Обновляем территорию
@@ -162,7 +171,7 @@ const Index = () => {
 
   // Симуляция мира
   useEffect(() =&gt; {
-    if (isSimulationRunning && countries.length &gt; 0) {
+    if (isSimulationRunning && countries.length &gt; 0 && speedMode &gt; 0) {
       const speed = SPEED_MODES[speedMode].multiplier;
       intervalRef.current = setInterval(() =&gt; {
         // Обновляем дату  
@@ -186,36 +195,200 @@ const Index = () => {
           const populationGrowth = Math.floor(country.population * 0.001 * speed);
           const economyGrowth = Math.floor(country.economy * 0.002 * speed);
           const militaryGrowth = Math.floor(country.military * 0.001 * speed);
+          
+          // Эволюция оружия на основе времени и экономики
+          let newWeaponLevel = country.weaponLevel;
+          const weaponEvolutionChance = Math.random() * (country.economy / 100000) * (speed / 100);
+          if (weaponEvolutionChance &gt; 0.1 && newWeaponLevel &lt; Object.keys(WEAPON_EVOLUTION).length - 1) {
+            newWeaponLevel++;
+          }
+          
+          // Обновление оружия по уровню
+          const weaponEras = Object.keys(WEAPON_EVOLUTION) as (keyof typeof WEAPON_EVOLUTION)[];
+          const currentEra = weaponEras[newWeaponLevel];
+          const newWeapons = WEAPON_EVOLUTION[currentEra].map(weaponName =&gt; ({
+            name: weaponName,
+            era: currentEra,
+            count: Math.floor(Math.random() * 1000) + 100
+          }));
 
           return {
             ...country,
             population: country.population + populationGrowth,
             economy: country.economy + economyGrowth,
             military: country.military + militaryGrowth,
-            weapons: country.weapons.map(weapon =&gt; ({
-              ...weapon,
-              count: weapon.count + Math.floor(weapon.count * 0.001 * speed)
-            }))
+            weaponLevel: newWeaponLevel,
+            weapons: newWeapons,
+            // Добавляем новые города по мере роста населения
+            cities: country.population &gt; country.cities.length * 500000 ? 
+              [...country.cities, {
+                x: Math.random() * 1200,
+                y: Math.random() * 600
+              }] : country.cities
           };
         }));
 
-        // Случайные события войны
-        if (Math.random() &lt; 0.1 && prev.length &gt; 1) {
-          const attacker = prev[Math.floor(Math.random() * prev.length)];
-          const defender = prev[Math.floor(Math.random() * prev.length)];
-          
-          if (attacker.id !== defender.id) {
-            const warEvent: WarEvent = {
-              id: `war-${Date.now()}`,
-              attacker: attacker.name,
-              defender: defender.name,
-              result: Math.random() &gt; 0.5 ? 'победа' : 'поражение',
-              date: new Date().toLocaleString('ru-RU')
-            };
+        // Симуляция расширения территорий и войн
+        setCountries(prevCountries =&gt; {
+          return prevCountries.map(country =&gt; {
+            // Случайное расширение территорий
+            if (Math.random() &lt; 0.15 && territories.length &gt; 0) {
+              const adjacentTerritories = territories.filter(t =&gt; {
+                if (t.countryId) return false;
+                
+                // Проверяем соседство с существующими территориями страны
+                return country.territories.some(ownedTerritory =&gt; {
+                  const ownedT = territories.find(owned =&gt; owned.id === ownedTerritory.id);
+                  if (!ownedT) return false;
+                  
+                  const distance = Math.sqrt(
+                    Math.pow(t.x - ownedT.x, 2) + Math.pow(t.y - ownedT.y, 2)
+                  );
+                  return distance &lt;= 50; // Соседние территории
+                });
+              });
+              
+              if (adjacentTerritories.length &gt; 0) {
+                const targetTerritory = adjacentTerritories[Math.floor(Math.random() * adjacentTerritories.length)];
+                
+                // Обновляем территории
+                setTerritories(prevTerr =&gt; prevTerr.map(t =&gt; 
+                  t.id === targetTerritory.id ? { ...t, countryId: country.id } : t
+                ));
+                
+                // Добавляем событие захвата
+                const expansionEvent: WarEvent = {
+                  id: `expansion-${Date.now()}`,
+                  attacker: country.name,
+                  defender: 'Нейтральная территория',
+                  result: 'территория захвачена',
+                  date: new Date().toLocaleString('ru-RU')
+                };
+                
+                setWarEvents(prev =&gt; [expansionEvent, ...prev.slice(0, 9)]);
+                
+                return {
+                  ...country,
+                  territories: [...country.territories, targetTerritory]
+                };
+              }
+            }
             
-            setWarEvents(prev =&gt; [warEvent, ...prev.slice(0, 9)]);
-          }
-        }
+            // Ядерные удары (только для стран с ядерным оружием)
+            if (Math.random() &lt; 0.01 && country.weaponLevel &gt;= 4 && prevCountries.length &gt; 1) {
+              const hasNuclearWeapons = country.weapons.some(w =&gt; w.name.includes('Ядерная'));
+              
+              if (hasNuclearWeapons) {
+                const enemies = prevCountries.filter(c =&gt; c.id !== country.id && c.cities.length &gt; 0);
+                
+                if (enemies.length &gt; 0) {
+                  const targetCountry = enemies[Math.floor(Math.random() * enemies.length)];
+                  const targetCity = targetCountry.cities[Math.floor(Math.random() * targetCountry.cities.length)];
+                  
+                  // Уничтожаем город
+                  setCountries(prevC =&gt; prevC.map(c =&gt; {
+                    if (c.id === targetCountry.id) {
+                      const newCities = c.cities.filter(city =&gt; city !== targetCity);
+                      const populationLoss = Math.floor(c.population * 0.3); // 30% потерь населения
+                      
+                      return {
+                        ...c,
+                        cities: newCities,
+                        population: Math.max(0, c.population - populationLoss),
+                        economy: Math.floor(c.economy * 0.7),
+                        military: Math.floor(c.military * 0.8)
+                      };
+                    }
+                    return c;
+                  }));
+                  
+                  const nuclearEvent: WarEvent = {
+                    id: `nuclear-${Date.now()}`,
+                    attacker: country.name,
+                    defender: targetCountry.name,
+                    result: 'ядерный удар - город уничтожен!',
+                    date: new Date().toLocaleString('ru-RU')
+                  };
+                  
+                  setWarEvents(prev =&gt; [nuclearEvent, ...prev.slice(0, 9)]);
+                }
+              }
+            }
+            
+            // Обычные войны между странами
+            if (Math.random() &lt; 0.05 && prevCountries.length &gt; 1) {
+              const enemies = prevCountries.filter(c =&gt; c.id !== country.id);
+              if (enemies.length &gt; 0) {
+                const enemy = enemies[Math.floor(Math.random() * enemies.length)];
+                
+                const warEvent: WarEvent = {
+                  id: `war-${Date.now()}`,
+                  attacker: country.name,
+                  defender: enemy.name,
+                  result: Math.random() &gt; 0.5 ? 'победа атакующего' : 'победа защитника',
+                  date: new Date().toLocaleString('ru-RU')
+                };
+                
+                setWarEvents(prev =&gt; [warEvent, ...prev.slice(0, 9)]);
+              }
+            }
+            
+            // Система независимости территорий
+            if (Math.random() &lt; 0.02 && country.territories.length &gt; 3) {
+              // Выбираем случайную территорию для отделения
+              const territoryToSeparate = country.territories[Math.floor(Math.random() * country.territories.length)];
+              
+              // Создаем новую независимую страну
+              const separatistNames = ['Республика Либертас', 'Новая Надежда', 'Свободная Республика', 'Независимость'];
+              const personalities: Country['aiPersonality'][] = ['peaceful', 'aggressive', 'expansionist', 'defensive', 'neutral'];
+              
+              const newCountry: Country = {
+                id: `country-separated-${Date.now()}`,
+                name: separatistNames[Math.floor(Math.random() * separatistNames.length)],
+                color: COUNTRY_COLORS[prevCountries.length % COUNTRY_COLORS.length],
+                population: Math.floor(country.population * 0.3), // 30% населения
+                economy: Math.floor(country.economy * 0.2),
+                military: Math.floor(country.military * 0.15),
+                territories: [territoryToSeparate],
+                capital: { x: territoryToSeparate.x + territoryToSeparate.width / 2, y: territoryToSeparate.y + territoryToSeparate.height / 2 },
+                cities: [{ x: territoryToSeparate.x + Math.random() * territoryToSeparate.width, y: territoryToSeparate.y + Math.random() * territoryToSeparate.height }],
+                weapons: country.weapons.map(w =&gt; ({ ...w, count: Math.floor(w.count * 0.2) })),
+                diplomacy: { allies: [], enemies: [country.id] },
+                aiPersonality: personalities[Math.floor(Math.random() * personalities.length)],
+                weaponLevel: Math.max(0, country.weaponLevel - 1) // Немного отстают в технологиях
+              };
+              
+              // Обновляем старую страну
+              setCountries(prev =&gt; [...prev, newCountry]);
+              
+              // Обновляем территории
+              setTerritories(prevTerr =&gt; prevTerr.map(t =&gt; 
+                t.id === territoryToSeparate.id ? { ...t, countryId: newCountry.id } : t
+              ));
+              
+              // Событие о независимости
+              const independenceEvent: WarEvent = {
+                id: `independence-${Date.now()}`,
+                attacker: newCountry.name,
+                defender: country.name,
+                result: 'объявлена независимость',
+                date: new Date().toLocaleString('ru-RU')
+              };
+              
+              setWarEvents(prev =&gt; [independenceEvent, ...prev.slice(0, 9)]);
+              
+              return {
+                ...country,
+                territories: country.territories.filter(t =&gt; t.id !== territoryToSeparate.id),
+                population: Math.floor(country.population * 0.7),
+                economy: Math.floor(country.economy * 0.8),
+                military: Math.floor(country.military * 0.85)
+              };
+            }
+            
+            return country;
+          });
+        });
       }, 1000);
     }
 
@@ -295,14 +468,19 @@ const Index = () => {
                   {isSimulationRunning ? 'Пауза' : 'Старт'}
                 &lt;/Button&gt;
               &lt;/div&gt;
-              &lt;div className="grid grid-cols-5 gap-1"&gt;
+              &lt;div className="grid grid-cols-3 gap-1"&gt;
                 {SPEED_MODES.map((mode, index) =&gt; (
                   &lt;Button
                     key={index}
-                    onClick={() =&gt; setSpeedMode(index)}
+                    onClick={() =&gt; {
+                      setSpeedMode(index);
+                      if (index === 0) setIsSimulationRunning(false);
+                      else if (!isSimulationRunning) setIsSimulationRunning(true);
+                    }}
                     variant={speedMode === index ? "default" : "outline"}
                     size="sm"
                     className="text-xs"
+                    disabled={index === 0 && !isSimulationRunning}
                   &gt;
                     {mode.name}
                   &lt;/Button&gt;
@@ -345,7 +523,7 @@ const Index = () => {
                 &lt;Separator className="bg-slate-600" /&gt;
                 
                 &lt;div&gt;
-                  &lt;h4 className="text-sm font-semibold text-white mb-2"&gt;Вооружение:&lt;/h4&gt;
+                  &lt;h4 className="text-sm font-semibold text-white mb-2"&gt;Вооружение ({Object.keys(WEAPON_EVOLUTION)[selectedCountry.weaponLevel]} эра):&lt;/h4&gt;
                   &lt;div className="space-y-1"&gt;
                     {selectedCountry.weapons.slice(0, 4).map((weapon, idx) =&gt; (
                       &lt;div key={idx} className="flex justify-between text-xs"&gt;
@@ -355,6 +533,12 @@ const Index = () => {
                         &lt;/Badge&gt;
                       &lt;/div&gt;
                     ))}
+                  &lt;/div&gt;
+                  &lt;div className="mt-2 text-xs text-slate-500"&gt;
+                    ИИ тип: {selectedCountry.aiPersonality === 'peaceful' ? 'Миролюбивый' : 
+                             selectedCountry.aiPersonality === 'aggressive' ? 'Агрессивный' :
+                             selectedCountry.aiPersonality === 'expansionist' ? 'Экспансионист' :
+                             selectedCountry.aiPersonality === 'defensive' ? 'Оборонительный' : 'Нейтральный'}
                   &lt;/div&gt;
                 &lt;/div&gt;
               &lt;/CardContent&gt;
@@ -390,8 +574,9 @@ const Index = () => {
         &lt;div className="flex-1 relative overflow-hidden"&gt;
           &lt;div 
             ref={mapRef}
-            className="w-full h-full cursor-crosshair bg-gradient-to-br from-blue-900 to-blue-700 relative"
+            className="w-full h-full cursor-crosshair bg-gradient-to-br from-slate-800 to-slate-900 relative overflow-hidden"
             onClick={handleMapClick}
+            style={{ width: '1200px', height: '600px' }}
           &gt;
             {/* Территории */}
             {territories.map((territory) =&gt; {

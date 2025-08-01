@@ -69,20 +69,20 @@ const SPEED_MODES = [
 const COUNTRY_COLORS = ['#E74C3C', '#3498DB', '#2ECC71', '#F39C12', '#9B59B6', '#1ABC9C', '#E67E22', '#34495E'];
 
 const Index = () => {
-  const [countries, setCountries] = useState&lt;Country[]&gt;([]);
-  const [territories, setTerritories] = useState&lt;Territory[]&gt;([]);
-  const [worldStats, setWorldStats] = useState&lt;WorldStats&gt;({
+  const [countries, setCountries] = useState<Country[]>([]);
+  const [territories, setTerritories] = useState<Territory[]>([]);
+  const [worldStats, setWorldStats] = useState<WorldStats>({
     totalPopulation: 0,
     totalEconomy: 0,
     totalMilitary: 0,
     date: { year: 0, month: 1, day: 1 }
   });
-  const [selectedCountry, setSelectedCountry] = useState&lt;Country | null&gt;(null);
-  const [warEvents, setWarEvents] = useState&lt;WarEvent[]&gt;([]);
+  const [selectedCountry, setSelectedCountry] = useState<Country | null>(null);
+  const [warEvents, setWarEvents] = useState<WarEvent[]>([]);
   const [speedMode, setSpeedMode] = useState(0);
   const [isSimulationRunning, setIsSimulationRunning] = useState(false);
-  const mapRef = useRef&lt;HTMLDivElement&gt;(null);
-  const intervalRef = useRef&lt;NodeJS.Timeout | null&gt;(null);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Инициализация территорий карты мира
   useEffect(() =&gt; {
